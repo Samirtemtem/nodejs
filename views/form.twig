@@ -4,47 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contact Manager</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="container py-4">
     <h1 class="mb-4 text-center">{{ title }}</h1>
 
+    <!-- Alert for feedback messages -->
+    <div id="alertMessage" class="alert d-none mb-3" role="alert"></div>
+
     <!-- Add Contact Form -->
     <div class="card mb-4">
         <div class="card-header">
-            <h2 class="mb-0">Add New Contact</h2>
+            <h2 class="mb-0">Ajouter un nouveau contact</h2>
         </div>
         <div class="card-body">
-            <form action="/contact" method="POST">
+            <form id="addContactForm" action="/contact" method="POST">
                 <div class="mb-3">
-                    <input type="text" class="form-control" name="FullName" placeholder="Full Name" required>
+                    <input type="text" class="form-control" name="FullName" placeholder="Nom complet" required>
                 </div>
                 <div class="mb-3">
-                    <input type="number" class="form-control" name="Phone" placeholder="Phone Number" required>
+                    <input type="number" class="form-control" name="Phone" placeholder="Numéro de téléphone" required>
                 </div>
-                <button type="submit" class="btn btn-primary">Add Contact</button>
+                <button type="submit" class="btn btn-primary" >Ajouter</button>
             </form>
         </div>
     </div>
 
-    <!-- Contact List -->
     <div class="card">
         <div class="card-header">
-            <h2 class="mb-0">Contacts</h2>
+            <h2 class="mb-0">List</h2>
         </div>
         <div class="card-body">
-            <ul class="list-group">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <input type="text" id="searchFullName" class="form-control" placeholder="Rechercher par nom">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <input type="number" id="searchPhone" class="form-control" placeholder="Rechercher par téléphone">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <input type="text" id="searchId" class="form-control" placeholder="Rechercher par ID">
+                </div>
+            </div>
+            <button id="searchContacts" class="btn btn-primary mb-3">Rechercher</button>
+            <div id="alertMessage" class="alert mb-3" style="display: none;"></div>
+            <ul class="list-group" id="contactsList">
             {% for c in cont %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <span>{{ c.FullName }} - {{ c.Phone }}</span>
+                <li class="list-group-item d-flex justify-content-between align-items-center" data-contact-id="{{ c._id }}">
+                    <div>
+                        <strong>ID:</strong> {{ c._id }}<br>
+                        <span>{{ c.FullName }} - {{ c.Phone }}</span>
+                    </div>
                     <div class="btn-group">
-                        <form action="/contact/{{ c._id }}/edit" method="GET" class="me-2">
-                            <button type="submit" class="btn btn-warning btn-sm">Edit</button>
-                        </form>
-                        <form action="/contact/{{ c._id }}/delete" method="POST">
-                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                        </form>
+                        <button onclick="editContact('{{ c._id }}')" class="btn btn-warning btn-sm me-2">Edit</button>
+                        <button onclick="deleteContact('{{ c._id }}')" class="btn btn-danger btn-sm">Delete</button>
                     </div>
                 </li>
             {% endfor %}
@@ -52,7 +65,235 @@
         </div>
     </div>
 
-    <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Define search function in global scope
+        async function performSearch() {
+            const alertMessage = document.getElementById('alertMessage');
+            const contactsList = document.getElementById('contactsList');
+
+            try {
+                // Get search values
+                const nameQuery = document.getElementById('searchFullName').value.trim();
+                const phoneQuery = document.getElementById('searchPhone').value.trim();
+                const idQuery = document.getElementById('searchId').value.trim();
+
+                // Show loading message
+                alertMessage.className = 'alert alert-info';
+                alertMessage.style.display = 'block';
+                alertMessage.textContent = 'Recherche en cours...';
+
+                // Build query string
+                const params = new URLSearchParams();
+                if (nameQuery) params.append('name', nameQuery);
+                if (phoneQuery) params.append('phone', phoneQuery);
+                if (idQuery) params.append('id', idQuery);
+
+                // Make API call
+                const response = await fetch(`/contact/search?${params.toString()}`);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Erreur lors de la recherche');
+                }
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Erreur lors de la recherche');
+                }
+
+                const contacts = result.data;
+
+                // Update contact list
+                contactsList.innerHTML = ''; // Clear current list
+
+                if (!contacts || contacts.length === 0) {
+                    alertMessage.className = 'alert alert-warning';
+                    alertMessage.textContent = 'Aucun contact trouvé';
+                    return;
+                }
+
+                contacts.forEach(contact => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.setAttribute('data-contact-id', contact._id);
+                    
+                    li.innerHTML = `
+                        <div>
+                            <strong>ID:</strong> ${contact._id}<br>
+                            <span>${contact.FullName} - ${contact.Phone}</span>
+                        </div>
+                        <div class="btn-group">
+                            <button onclick="editContact('${contact._id}')" class="btn btn-warning btn-sm me-2">Edit</button>
+                            <button onclick="deleteContact('${contact._id}')" class="btn btn-danger btn-sm">Delete</button>
+                        </div>
+                    `;
+                    
+                    contactsList.appendChild(li);
+                });
+
+                alertMessage.className = 'alert alert-success';
+                alertMessage.textContent = `${contacts.length} contact(s) trouvé(s)`;
+
+            } catch (error) {
+                console.error('Search error:', error);
+                alertMessage.className = 'alert alert-danger';
+                alertMessage.textContent = error.message || 'Une erreur s\'est produite lors de la recherche';
+                // Keep the existing contacts in the list on error
+            } finally {
+                // Clear feedback after 3 seconds
+                setTimeout(() => {
+                    alertMessage.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Add event listeners when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchButton = document.getElementById('searchContacts');
+            
+            // Add search button click handler
+            if (searchButton) {
+                searchButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    performSearch();
+                });
+            }
+
+            // Add Enter key handler for search inputs
+            ['searchFullName', 'searchPhone', 'searchId'].forEach(inputId => {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            performSearch();
+                        }
+                    });
+                }
+            });
+
+            const addContactForm = document.getElementById('addContactForm');
+
+            // Add Contact Form Submission
+            addContactForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                
+                try {
+                    const response = await fetch('/contact', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    if (response.ok) {
+                        const newContact = await response.json();
+                        
+                        // Create new contact element
+                        const newItem = document.createElement('li');
+                        newItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        newItem.setAttribute('data-contact-id', newContact._id);
+                        
+                        newItem.innerHTML = `
+                            <div>
+                                <strong>ID:</strong> ${newContact._id}<br>
+                                <span>${newContact.FullName} - ${newContact.Phone}</span>
+                            </div>
+                            <div class="btn-group">
+                                <button onclick="editContact('${newContact._id}')" class="btn btn-warning btn-sm me-2">Edit</button>
+                                <button onclick="deleteContact('${newContact._id}')" class="btn btn-danger btn-sm">Delete</button>
+                            </div>
+                        `;
+                        
+                        // Add to the list
+                        const contactList = document.getElementById('contactsList');
+                        contactList.insertBefore(newItem, contactList.firstChild);
+                        
+                        // Clear the form
+                        this.reset();
+                        
+                        // Show success message
+                        const searchResults = document.getElementById('alertMessage');
+                        searchResults.innerHTML = `
+                            <div class="alert alert-success">
+                                Contact ajouté avec succès!
+                            </div>
+                        `;
+                        setTimeout(() => searchResults.innerHTML = '', 3000);
+                    } else {
+                        throw new Error('Failed to add contact');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    const searchResults = document.getElementById('alertMessage');
+                    searchResults.innerHTML = `
+                        <div class="alert alert-danger">
+                            Une erreur s'est produite lors de l'ajout du contact
+                        </div>
+                    `;
+                    setTimeout(() => searchResults.innerHTML = '', 3000);
+                }
+            });
+            
+            // Edit Contact Function
+            async function editContact(id) {
+                window.location.href = `/contact/${id}/edit`;
+            }
+
+            // Delete Contact Function
+            async function deleteContact(id) {
+                try {
+                    const response = await fetch(`/contact/${id}/delete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const listItem = document.querySelector(`li[data-contact-id="${id}"]`);
+                        listItem.remove();
+                    } else {
+                        alert('Failed to delete contact');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('An error occurred while deleting the contact');
+                }
+            }
+
+            const contactList = document.getElementById('contactsList');
+            
+            contactList.addEventListener('submit', async function(e) {
+                if (e.target.classList.contains('delete-form')) {
+                    e.preventDefault();
+                    const listItem = e.target.closest('li');
+                    const contactId = listItem.getAttribute('data-contact-id');
+                    
+                    try {
+                        const response = await fetch(`/contact/${contactId}/delete`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            listItem.remove();
+                        } else {
+                            alert('Failed to delete contact');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('An error occurred while deleting the contact');
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>
